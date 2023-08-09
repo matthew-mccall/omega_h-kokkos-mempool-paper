@@ -1,0 +1,186 @@
+\documentclass[12pt, letterpaper]{article}
+
+\usepackage{caption}
+\usepackage{float}
+
+\usepackage{mathtools}
+\DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
+
+\usepackage{tikz}
+\usetikzlibrary{decorations.pathreplacing}
+
+\title{A Device Memory Pool Implementation for Omega\_h Applications with Kokkos}
+\begin{document}
+\author{Smith, Cameron \and McCall, Matthew}
+\maketitle
+
+\section{Introduction}
+A memory pool is a technique for managing memory allocation in a computer program. It consists of a pre-allocated block of memory that is divided into smaller chunks of fixed size. The program can request and release memory from the pool as needed, without invoking the system's memory allocator. This can improve the performance, reliability and portability of the program. Some of the benefits of memory pools are:
+\begin{itemize}
+\item They reduce memory fragmentation, which can cause inefficient use of memory and slow down the program.
+\item They reduce the overhead of system memory allocation and deallocation, which can consume a significant amount of CPU time and introduce latency.
+\item They allow the programmer to control the size and layout of the memory blocks, which can optimize the memory access patterns and cache efficiency.
+\end{itemize}
+Preliminary work done using the CUDA library shows a significant performance increase when using a memory pool as opposed to traditional memory management strategies. However, CUDA is a proprietary library developed by NVIDIA for NVIDIA devices. The use of vendor-specific libraries such as CUDA for GPU computing can limit the portability and flexibility of applications. As such, this research aims to achieve comparable performance gains on AMD and Intel devices using the cross-platform library, Kokkos.
+
+\section{Technical Details}
+In Omega\_h, a \verb|StaticKokkosPool| is a non-resizable pool of memory from which an allocation can be made. Upon instantiation of each \verb|StaticKokkosPool|, we call \verb|kokkos_malloc| to get a contiguous pool of memory. When we destroy the \verb|StaticKokkosPool|, we call \verb|kokkos_free| to release the memory back to the system. The memory pool is divided into an array of contiguous fixed-size 1 kB chunks. Each chunk is ordered and index by their position. 
+
+\subsection{Allocation}
+Instead of using a free-list, which may result in linear allocation time, we use a free-mulitset, \verb|freeSetBySize|, which results in logarithmic allocation time. When an allocation $n$ bytes is requested, we search through \verb|freeSetBySize| to find the smallest free region that can accommodate the number of requested chunks. The number of requested chunks is calculated by $r=\ceil{n \div \mathit{chunkSizeInBytes}}$. In the case of a new or empty \verb|StaticKokkosPool|s, \verb|freeSetBySize| would contain only one free region representing the entire pool. A free region is defined as a set of contiguous free blocks between allocated regions or ends of the pool. If the found free region has more chunks than the number of requested chunks, then we split the region and only allocate the chunks requested. The remaining region remains in the free list. It is worth noting that we only split regions of chunks and not the chunks themselves.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+	\foreach \i in {0,...,1} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {2,...,4} {
+		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {5,...,6} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {6,...,9} {
+		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {10,...,12} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	
+	\node (root) at (1,2) {[0,2)};
+	\node (node1) at (5.5,1.5) {[5,6)};
+	\node (node2) at (11.5,2.5) {[10,13)};
+	
+	\draw[->] (root) |- (node1);
+	\draw[->] (root) |- (node2);
+
+\end{tikzpicture}
+\caption{A fragmented pool with \texttt{freeSetBySize} showing how free regions are organized in a tree structure. Index pairs are sorted top to bottom by the size of the free region they represent in decreasing order.}
+\end{figure}
+
+\subsection{Deallocation and Defragmentation}
+In addition to \verb|freeSetBySize|,  \verb|freeSetByIndex| is used to achieve defragmentation in logarithmic time.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+	\foreach \i in {0,...,1} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {2,...,4} {
+		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {5,...,6} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {6,...,9} {
+		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {10,...,12} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	
+	\node (node1) at (1,1.5) {[0,2)};
+	\node (root) at (5.5,2) {[5,6)};
+	\node (node2) at (11.5,1.5) {[10,13)};
+	
+	\draw[->] (root) -| (node1);
+	\draw[->] (root) -| (node2);
+
+\end{tikzpicture}
+\caption{A fragmented pool with \texttt{freeSetByIndex} showing how free regions are organized in a tree structure. Index pairs are sorted left to right lexicographically by the indices of the free region they represent in increasing order.}
+\end{figure}
+
+When memory is deallocated, i.e returned to the pool, the region is temporarily inserted into the tree.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+	\foreach \i in {0,...,1} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {2,...,4} {
+		\draw[fill=gray!20] (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {5,...,6} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {6,...,9} {
+		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {10,...,12} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	
+	\node (node1) at (1,2) {[0,2)};
+	\node (root) at (5.5,2.5) {[5,6)};
+	\node (node2) at (11.5,1.5) {[10,13)};
+	\node (node3) at (3.5,1.5) {[2,5)};
+	
+	\draw[->] (root) -| (node1);
+	\draw[->] (root) -| (node2);
+	\draw[->] (node1) -| (node3);
+
+\end{tikzpicture}
+\caption{A fragmented pool with \texttt{freeSetByIndex} showing with a recently returned region.}
+\end{figure}
+
+We then check for free regions adjacent to the recently returned region, remove the two or three index pairs if any adjacent regions were found, and then insert one index pair encompassing the defragmented region.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+	\foreach \i in {0,...,1} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {2,...,4} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {5,...,6} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {6,...,9} {
+		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	\foreach \i in {10,...,12} {
+		\draw (\i,0) rectangle (\i+1,1);
+		\node (\i) at (\i+0.5,0.5) {\i};
+	}
+	
+	\node (node1) at (3,1.5) {[0,6)};
+	\node (root) at (11.5,2) {[10,13)};
+	
+	\draw[->] (root) -| (node1);
+
+\end{tikzpicture}
+\caption{A less fragmented pool with \texttt{freeSetByIndex} shown after defragmentation}
+\end{figure}
+
+\subsection{Resizing}
+Aforementioned, a \verb|StaticKokkosPool| is a non-resizable pool. In the event that we cannot find suitable free region large enough to satisfy the allocation requested, we make a new \verb|StaticKokkosPool|. The \verb|KokkosPool| class performs this for us by maintaining a list of \verb|StaticKokkosPool|s. In Omega\_h, \verb|KokkosPool| is a singleton object that is lazy initialized upon the first allocation request. When the \verb|KokkosPool| is instantiated, it creates one \verb|StaticKokkosPool| with 700 MB of memory and adds the pool to its list. Thus, when you allocate through \verb|KokkosPool|, it iterates over its list of \verb|StaticKokkosPool|s and tries to allocate from all until it achieves a successful allocation. If we have reached the end of the list, we allocate a new \verb|StaticKokkosPool| with the size of $\max \left( \mathit{r}, \mathit{mostChunks} * g \right)$, where $r$ is the number of chunks requested as defined above, $\mathit{mostChunks}$ is the number of chunks in the largest \verb|StaticKokkosPool|, and $g$ is the growth factor. In Omega\_h, the default growth factor is 2. This strategy guarantees an allocation will be successful up until the machine runs out of physical memory.
+
+\section{Performance Results}
+
+\section{Related Works}
+
+\end{document}
