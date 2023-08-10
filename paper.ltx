@@ -6,6 +6,8 @@
 \usepackage{mathtools}
 \DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
 
+\usepackage{pgfplots}
+
 \usepackage{tikz}
 \usetikzlibrary{decorations.pathreplacing}
 
@@ -105,7 +107,7 @@ In addition to \verb|freeSetBySize|,  \verb|freeSetByIndex| is used to achieve d
 	\draw[->] (root) -| (node2);
 
 \end{tikzpicture}
-\caption{A fragmented pool with \texttt{freeSetByIndex} showing how free regions are organized in a tree structure. Index pairs are sorted left to right lexicographically by the indices of the free region they represent in increasing order.}
+\caption{A fragmented pool with \texttt{freeSetByIndex} showing how free regions are organized in a tree structure. Index pairs are sorted left to right by the indices of the free region they represent in increasing order.}
 \end{figure}
 
 When memory is returned to the pool, the region is temporarily inserted into the tree.
@@ -186,10 +188,37 @@ We then check for free regions adjacent to the recently returned region, remove 
 \end{figure}
 
 \subsection{Resizing}
-Aforementioned, a \verb|StaticKokkosPool| is a non-resizable pool. In the event that we cannot find suitable free region large enough to satisfy the allocation requested, we make a new \verb|StaticKokkosPool|. The \verb|KokkosPool| class performs this for us by maintaining a list of \verb|StaticKokkosPool|s. In Omega\_h, \verb|KokkosPool| is a singleton object that is lazy initialized upon the first allocation request. When the \verb|KokkosPool| is instantiated, it creates one \verb|StaticKokkosPool| with 700 MB of memory and adds the pool to its list. Thus, when you allocate through \verb|KokkosPool|, it iterates over its list of \verb|StaticKokkosPool|s and tries to allocate from all until it achieves a successful allocation. If we have reached the end of the list, we allocate a new \verb|StaticKokkosPool| with the size of $\max \left( \mathit{r}, \mathit{mostChunks} * g \right)$, where $r$ is the number of chunks requested as defined above, $\mathit{mostChunks}$ is the number of chunks in the largest \verb|StaticKokkosPool|, and $g$ is the growth factor. In Omega\_h, the default growth factor is 2. This strategy guarantees an allocation will be successful up until the machine runs out of physical memory.
+In the event that we cannot find suitable free region large enough to satisfy the allocation requested, we make a new \verb|StaticKokkosPool|. The \verb|KokkosPool| class performs this for us by maintaining a list of \verb|StaticKokkosPool|s. In Omega\_h, \verb|KokkosPool| is a singleton object that is lazy initialized upon the first allocation request. Upon instantiation, it creates one \verb|StaticKokkosPool| and adds the pool to its list. Thus, when you allocate through \verb|KokkosPool|, it iterates over its list of \verb|StaticKokkosPool|s and tries to allocate from all until it achieves a successful allocation. If we have reached the end of the list, we allocate a new \verb|StaticKokkosPool| with the size of $\max \left( \mathit{r}, \mathit{mostChunks} * g \right)$, where $r$ is the number of chunks requested as defined above, $\mathit{mostChunks}$ is the number of chunks in the largest \verb|StaticKokkosPool|, and $g$ is the growth factor. In Omega\_h, the default growth factor is 2. This strategy ensures an allocation will be successful until the machine runs out of physical memory.
 
 \section{Performance Results}
+The implementation discussed here resides in Omega\_h, a mesh adaptivity library. The library was benchmarked with and without the memory pool against the fun3d delta wing case on the Oak Ridge Leadership Computing Facility's Frontier. In the 50k case without pooling, adaptation took 1.09 seconds on average. With the pool engagaed, this time was reduced to 0.48 seconds, a 56\% time reduction. In the 500k case without pooling, adaptation took 17.62 seconds on average while, with the pool enabled, adaptation only took 11.43 seconds on average, a 35\% time reduction.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar,
+    bar width=2cm,
+    width=\textwidth,
+    height=10cm,
+    legend style={at={(0.01,0.98)}, anchor=north west},
+    ylabel={Time (seconds)},
+    symbolic x coords={50k,500k},
+    xtick=data,
+    enlarge x limits=0.5,
+    nodes near coords,
+    nodes near coords align={vertical},
+    ymin=0
+    ]
+\addplot coordinates {(50k,0.475288) (500k,11.432523)};
+\addplot coordinates {(50k,1.09296) (500k,17.61949)};
+\legend{Pool Enabled, Pool Disabled}
+\end{axis}
+\end{tikzpicture}
+\caption{A bar plot showing the performance improvements in the delta wing case brought by the implementation of a memory pool. Lower time is better.}
+\end{figure}
 
 \section{Related Works}
+Aforementioned, there exists a memory pool written for the CUDA backend in Omega\_h. However, this implementation can only be used on NVIDIA devices. On the other hand, this implementation uses Kokkos, a cross-platform library, to obtain device memory. It is also worth noting that this implementation only splits and coalesces free regions, not individual chunks. Thus, it is possible for small allocations, or allocations that don't roughly align with multiples of the chunk size to result in excessive memory waste as the vast majority of a chunk may not be used, especially if chunks are large. Alternative implementations such as Umpire split and coalesce individual blocks, resulting in lesser memory usage. Regardless, this implementation manages to bring substantial performance improvements in a cross-platform manner.
 
 \end{document}
