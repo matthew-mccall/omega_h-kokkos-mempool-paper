@@ -32,25 +32,32 @@ Instead of using a free-list, which may result in linear allocation time, we use
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}
+	\draw[fill=gray] (0,0) rectangle (0.5,0.5);
+	\node at (1.5,0.25) {Allocated};
+
+	\draw (3,0) rectangle (3.5,0.5);
+	\node at (4,0.25) {Free};
+\end{tikzpicture}
+\begin{tikzpicture}
 	\foreach \i in {0,...,1} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {2,...,4} {
 		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {5,...,6} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {6,...,9} {
 		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {10,...,12} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	
 	\node (root) at (1,2) {[0,2)};
@@ -59,7 +66,6 @@ Instead of using a free-list, which may result in linear allocation time, we use
 	
 	\draw[->] (root) |- (node1);
 	\draw[->] (root) |- (node2);
-
 \end{tikzpicture}
 \caption{A fragmented pool with \texttt{freeSetBySize} showing how free regions are organized in a tree structure. Index pairs are sorted top to bottom by the size of the free region they represent in decreasing order.}
 \end{figure}
@@ -72,23 +78,23 @@ In addition to \verb|freeSetBySize|,  \verb|freeSetByIndex| is used to achieve d
 \begin{tikzpicture}
 	\foreach \i in {0,...,1} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {2,...,4} {
 		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {5,...,6} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {6,...,9} {
 		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {10,...,12} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	
 	\node (node1) at (1,1.5) {[0,2)};
@@ -102,30 +108,30 @@ In addition to \verb|freeSetBySize|,  \verb|freeSetByIndex| is used to achieve d
 \caption{A fragmented pool with \texttt{freeSetByIndex} showing how free regions are organized in a tree structure. Index pairs are sorted left to right lexicographically by the indices of the free region they represent in increasing order.}
 \end{figure}
 
-When memory is deallocated, i.e returned to the pool, the region is temporarily inserted into the tree.
+When memory is returned to the pool, the region is temporarily inserted into the tree.
 
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}
 	\foreach \i in {0,...,1} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {2,...,4} {
-		\draw[fill=gray!20] (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\draw[fill=gray!33] (\i,0) rectangle (\i+1,1);
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {5,...,6} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {6,...,9} {
 		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {10,...,12} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	
 	\node (node1) at (1,2) {[0,2)};
@@ -136,6 +142,9 @@ When memory is deallocated, i.e returned to the pool, the region is temporarily 
 	\draw[->] (root) -| (node1);
 	\draw[->] (root) -| (node2);
 	\draw[->] (node1) -| (node3);
+
+	\draw[fill=gray!33] (12,2.25) rectangle (12.5,2.75);
+	\node at (14,2.5) {Recently Freed};
 
 \end{tikzpicture}
 \caption{A fragmented pool with \texttt{freeSetByIndex} showing with a recently returned region.}
@@ -148,23 +157,23 @@ We then check for free regions adjacent to the recently returned region, remove 
 \begin{tikzpicture}
 	\foreach \i in {0,...,1} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {2,...,4} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {5,...,6} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {6,...,9} {
 		\draw[fill=gray] (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	\foreach \i in {10,...,12} {
 		\draw (\i,0) rectangle (\i+1,1);
-		\node (\i) at (\i+0.5,0.5) {\i};
+		\node at (\i+0.5,0.5) {\i};
 	}
 	
 	\node (node1) at (3,1.5) {[0,6)};
