@@ -6,27 +6,38 @@
 \usepackage{mathtools}
 \DeclarePairedDelimiter{\ceil}{\lceil}{\rceil}
 
+\usepackage{xcolor}
 \usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
 
 \usepackage{tikz}
 \usetikzlibrary{decorations.pathreplacing}
 
 \title{A Device Memory Pool Implementation for Omega\_h Applications with Kokkos}
 \begin{document}
-\author{Smith, Cameron \and McCall, Matthew}
+\author{Matthew McCall \and Cameron W. Smith}
 \maketitle
 
 \section{Introduction}
-A memory pool is a technique for managing memory allocation in a computer program. It consists of a pre-allocated block of memory that is divided into smaller chunks of fixed size. The program can request and release memory from the pool as needed, without invoking the system's memory allocator. This can improve the performance, reliability and portability of the program. Some of the benefits of memory pools are:
+A memory pool is a technique for managing memory allocation in a computer program. It consists of a pre-allocated block of memory that is divided into smaller chunks of fixed size \textcolor{red}{are they always fixed?}. The program can request and release memory from the pool as needed, without invoking the system's memory allocator. This can improve the performance, reliability and portability of the program. Some of the benefits of memory pools are:
 \begin{itemize}
 \item They reduce memory fragmentation, which can cause inefficient use of memory and slow down the program.
 \item They reduce the overhead of system memory allocation and deallocation, which can consume a significant amount of CPU time and introduce latency.
 \item They allow the programmer to control the size and layout of the memory blocks, which can optimize the memory access patterns and cache efficiency.
 \end{itemize}
-Preliminary work done using the CUDA library shows a significant performance increase when using a memory pool as opposed to traditional memory management strategies. However, CUDA is a proprietary library developed by NVIDIA for NVIDIA devices. The use of vendor-specific libraries such as CUDA for GPU computing can limit the portability and flexibility of applications. As such, this research aims to achieve comparable performance gains on AMD and Intel devices using the cross-platform library, Kokkos.
+Preliminary work done using the CUDA library for unstructured mesh adaptation in Omega\_h on NVIDIA GPUs shows a significant performance increase when using a memory pool as opposed to traditional memory management strategies. However, CUDA is a proprietary library developed by NVIDIA for NVIDIA devices. The use of vendor-specific libraries such as CUDA for GPU computing can limit the portability and flexibility of applications. As such, this research aims to achieve comparable performance gains on AMD and Intel devices using the cross-platform library, Kokkos, to implement the memory pool.
+
+\section{Background and Related Works}
+\textcolor{red}{Briefly describe (one or two paragraphs) what Omega\_h does and how it is implemented (focus on the current kokkos backend).}
+
+There exists a memory pool written for the CUDA backend in Omega\_h\textcolor{red}{REFERENCE}. However, this implementation can only be used on NVIDIA devices. On the other hand, this implementation uses Kokkos \textcolor{red}{REFERENCE}, a cross-platform library, to obtain device memory. \textcolor{red}{Maybe some/most of the following should go into a closing remarks or future work section? We still want to describe what Umpire, and possibly other, mem pool implementations do.} It is also worth noting that this implementation only splits and coalesces free regions, not individual chunks. Thus, it is possible for small allocations, or allocations that don't roughly align with multiples of the chunk size to result in excessive memory waste as the vast majority of a chunk may not be used, especially if chunks are large. Alternative implementations such as Umpire\textcolor{red}{REFERENCE} split and coalesce individual blocks, resulting in lesser memory usage. Regardless, this implementation manages to bring substantial performance improvements in a cross-platform manner.
+
+\textcolor{red}{We should discuss if CPU memory pool strategies make sense on GPUs.  Does the large parallelism of GPUs make the approaches fundamentally different?  Are there other factors that influence the design?}
 
 \section{Technical Details}
-In Omega\_h, a \verb|StaticKokkosPool| is a non-resizable pool of memory from which an allocation can be made. Upon instantiation of each \verb|StaticKokkosPool|, we call \verb|kokkos_malloc| to get a contiguous pool of memory. When we destroy the \verb|StaticKokkosPool|, we call \verb|kokkos_free| to release the memory back to the system. The memory pool is divided into an array of contiguous fixed-size 1 kB chunks. Each chunk is ordered and index by their position. 
+\textcolor{red}{Be sure to reference the figures in the text (use \\label{foo}) and describe the figure.}
+
+In Omega\_h, a \verb|StaticKokkosPool| is a non-resizable pool of memory from which an allocation can be made. Upon instantiation of each \verb|StaticKokkosPool|, we call \verb|kokkos_malloc| to get a contiguous pool of memory. When we destroy the \verb|StaticKokkosPool|, we call \verb|kokkos_free| to release the memory back to the system. The memory pool is divided into an array of contiguous fixed-size 1 kiB chunks. Each chunk is ordered and indexed by their position. 
 
 \subsection{Allocation}
 Instead of using a free-list, which may result in linear allocation time, we use a free-mulitset, \verb|freeSetBySize|, which results in logarithmic allocation time. When an allocation $n$ bytes is requested, we search through \verb|freeSetBySize| to find the smallest free region that can accommodate the number of requested chunks. The number of requested chunks is calculated by $r=\ceil{n \div \mathit{chunkSizeInBytes}}$. In the case of a new or empty \verb|StaticKokkosPool|s, \verb|freeSetBySize| would contain only one free region representing the entire pool. A free region is defined as a set of contiguous free blocks between allocated regions or ends of the pool. If the found free region has more chunks than the number of requested chunks, then we split the region and only allocate the chunks requested. The remaining region remains in the free list. It is worth noting that we only split regions of chunks and not the chunks themselves.
@@ -188,10 +199,12 @@ We then check for free regions adjacent to the recently returned region, remove 
 \end{figure}
 
 \subsection{Resizing}
-In the event that we cannot find suitable free region large enough to satisfy the allocation requested, we make a new \verb|StaticKokkosPool|. The \verb|KokkosPool| class performs this for us by maintaining a list of \verb|StaticKokkosPool|s. In Omega\_h, \verb|KokkosPool| is a singleton object that is lazy initialized upon the first allocation request. Upon instantiation, it creates one \verb|StaticKokkosPool| and adds the pool to its list. Thus, when you allocate through \verb|KokkosPool|, it iterates over its list of \verb|StaticKokkosPool|s and tries to allocate from all until it achieves a successful allocation. If we have reached the end of the list, we allocate a new \verb|StaticKokkosPool| with the size of $\max \left( \mathit{r}, \mathit{mostChunks} * g \right)$, where $r$ is the number of chunks requested as defined above, $\mathit{mostChunks}$ is the number of chunks in the largest \verb|StaticKokkosPool|, and $g$ is the growth factor. In Omega\_h, the default growth factor is 2. This strategy ensures an allocation will be successful until the machine runs out of physical memory.
+In the event that we cannot find a suitable free region large enough to satisfy the allocation requested, we make a new \verb|StaticKokkosPool|. The \verb|KokkosPool| class performs this for us by maintaining a list of \verb|StaticKokkosPool|s. In Omega\_h, \verb|KokkosPool| is a singleton object that is lazy initialized upon the first allocation request. Upon instantiation, it creates one \verb|StaticKokkosPool| and adds the pool to its list. Thus, when you allocate through \verb|KokkosPool|, it iterates over its list of \verb|StaticKokkosPool|s and tries to allocate from all \textcolor{red}{What does 'allocate from all' mean?} until it achieves a successful allocation. If we have reached the end of the list, we allocate a new \verb|StaticKokkosPool| with the size of $\max \left( \mathit{r}, \mathit{mostChunks} * g \right)$, where $r$ is the number of chunks requested as defined above, $\mathit{mostChunks}$ is the number of chunks in the largest \verb|StaticKokkosPool|, and $g$ is the growth factor. In Omega\_h, the default growth factor is two. This strategy ensures an allocation will be successful until the machine runs out of physical memory.
 
 \section{Performance Results}
-The implementation discussed here resides in Omega\_h, a mesh adaptivity library. The library was benchmarked with and without the memory pool against the fun3d delta wing case on the Oak Ridge Leadership Computing Facility's Frontier. In the 50k case without pooling, adaptation took 1.09 seconds on average. With the pool engagaed, this time was reduced to 0.48 seconds, a 56\% time reduction. In the 500k case without pooling, adaptation took 17.62 seconds on average while, with the pool enabled, adaptation only took 11.43 seconds on average, a 35\% time reduction.
+The implementation discussed here resides in Omega\_h, a mesh adaptivity library. The library was benchmarked with and without the memory pool against the FUN3D delta wing case from the Unstructured Grid Adaptive Working Group adaptation benchmarks \textcolor{red}{REFERENCE ohttps://github.com/UGAWG/adapt-benchmarks} on the Oak Ridge Leadership Computing Facility's Frontier. In the 50k case without pooling, adaptation took 1.09 seconds on average. With the pool engagaed, this time was reduced to 0.48 seconds, a 56\% time reduction. In the 500k case without pooling, adaptation took 17.62 seconds on average while, with the pool enabled, adaptation only took 11.43 seconds on average, a 35\% time reduction.
+
+\textcolor{red}{We need to provide details of the parameters used to control the memory pool and describe why they were selected. In addition, we shold discuss the mesh as well (initial and final entity count etc.) - I can help fill in some of these details.  It is also increasingly important to enable reproducability by providing the specific commits of the codes used, the input data set (could be a hash + github link or data on zenodo), and the logs from the runs.  This data and any associated readme/discussion would be provided as a supplement to the paper that the reader could download.}
 
 \begin{figure}[H]
 \centering
@@ -218,7 +231,8 @@ The implementation discussed here resides in Omega\_h, a mesh adaptivity library
 \caption{A bar plot showing the performance improvements in the delta wing case brought by the implementation of a memory pool. Lower time is better.}
 \end{figure}
 
-\section{Related Works}
-Aforementioned, there exists a memory pool written for the CUDA backend in Omega\_h. However, this implementation can only be used on NVIDIA devices. On the other hand, this implementation uses Kokkos, a cross-platform library, to obtain device memory. It is also worth noting that this implementation only splits and coalesces free regions, not individual chunks. Thus, it is possible for small allocations, or allocations that don't roughly align with multiples of the chunk size to result in excessive memory waste as the vast majority of a chunk may not be used, especially if chunks are large. Alternative implementations such as Umpire split and coalesce individual blocks, resulting in lesser memory usage. Regardless, this implementation manages to bring substantial performance improvements in a cross-platform manner.
+\section{Closing Remarks and Future Work}
+
+\textcolor{red}{1-2 paragraph summary of what was discussed.  1-2 paragraphs describing what the next steps are (i.e., umpire detail about chunks from related work section), testing on Intel GPUs, etc..}
 
 \end{document}
