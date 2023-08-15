@@ -19,7 +19,7 @@
 \maketitle
 
 \section{Introduction}
-A memory pool is a technique for managing memory allocation in a computer program. It consists of a pre-allocated block of memory that is divided into smaller chunks of fixed size \textcolor{red}{are they always fixed?}. The program can request and release memory from the pool as needed, without invoking the system's memory allocator. This can improve the performance, reliability and portability of the program. Some of the benefits of memory pools are:
+A memory pool is a technique for managing memory allocation in a computer program. It consists of a pre-allocated block of memory from which the program can request and release memory from the pool as needed, without invoking the system's memory allocator. This can improve the performance, reliability and portability of the program. Some of the benefits of memory pools are:
 \begin{itemize}
 \item They reduce memory fragmentation, which can cause inefficient use of memory and slow down the program.
 \item They reduce the overhead of system memory allocation and deallocation, which can consume a significant amount of CPU time and introduce latency.
@@ -28,20 +28,17 @@ A memory pool is a technique for managing memory allocation in a computer progra
 Preliminary work done using the CUDA library for unstructured mesh adaptation in Omega\_h on NVIDIA GPUs shows a significant performance increase when using a memory pool as opposed to traditional memory management strategies. However, CUDA is a proprietary library developed by NVIDIA for NVIDIA devices. The use of vendor-specific libraries such as CUDA for GPU computing can limit the portability and flexibility of applications. As such, this research aims to achieve comparable performance gains on AMD and Intel devices using the cross-platform library, Kokkos, to implement the memory pool.
 
 \section{Background and Related Works}
-\textcolor{red}{Briefly describe (one or two paragraphs) what Omega\_h does and how it is implemented (focus on the current kokkos backend).}
+Omega\_h \cite{omegah} is a software library written in C++ that provides mesh adaptivity for tetrahedron and triangle meshes, with an emphasis on high-performance computing. It is designed to add adaptive capabilities to existing simulation software. Mesh adaptivity allows for the reduction of both discretization error and the number of degrees of freedom during a simulation, as well as enabling simulations with moving objects and changing geometries. Omega\_h achieves this in a manner that is fast, memory-efficient, and portable across a variety of architectures.
 
-There exists a memory pool written for the CUDA backend in Omega\_h\textcolor{red}{REFERENCE}. However, this implementation can only be used on NVIDIA devices. On the other hand, this implementation uses Kokkos \textcolor{red}{REFERENCE}, a cross-platform library, to obtain device memory. \textcolor{red}{Maybe some/most of the following should go into a closing remarks or future work section? We still want to describe what Umpire, and possibly other, mem pool implementations do.} It is also worth noting that this implementation only splits and coalesces free regions, not individual chunks. Thus, it is possible for small allocations, or allocations that don't roughly align with multiples of the chunk size to result in excessive memory waste as the vast majority of a chunk may not be used, especially if chunks are large. Alternative implementations such as Umpire\textcolor{red}{REFERENCE} split and coalesce individual blocks, resulting in lesser memory usage. Regardless, this implementation manages to bring substantial performance improvements in a cross-platform manner.
+There exists a memory pool that works well with the CUDA backend in Omega\_h \cite{omegahcuda}. However, this implementation can only be used on NVIDIA devices. On the other hand, this implementation uses Kokkos \cite{kokkos}, a cross-platform library, to obtain device memory. The design for this pool was inspired by Boost's Simple Segregated Storage \cite{boostsss}, a fixed-size chunk memory-pool implementation targeting host-sided memory. A fixed-sized chunk design often allows for faster allocation, whereas variably-sized chunk designs, such as those found in Umpire \cite{Umpire}, allow for more memory efficiency. An important distinction between Boost's Simple Segregated Storage and other similar host-bound implementations and ours is that the free-list is interweaved into the chunks themselves. While this reduces memory overhead, storing a free-list in device memory would require copying the free-list to the host, manipulating it, and then copying it back to the device each time an allocation or deallocation is performed. As such, this scheme for managing chunks was impractical. It was much more reasonable to store the free-list in host memory. However, now that we have separated the free-list from the pool, we realized it does not have to be a list, which can result in linear allocation time. Thus, we opted to use free-sets instead. Since memory is only requested and returned in host-side code, the large parallelism of GPUs does not interfere with traditional set-searching algorithms.
 
 \textcolor{red}{We should discuss if CPU memory pool strategies make sense on GPUs.  Does the large parallelism of GPUs make the approaches fundamentally different?  Are there other factors that influence the design?}
 
 \section{Technical Details}
-\textcolor{red}{Be sure to reference the figures in the text (use \\label{foo}) and describe the figure.}
-
-In Omega\_h, a \verb|StaticKokkosPool| is a non-resizable pool of memory from which an allocation can be made. Upon instantiation of each \verb|StaticKokkosPool|, we call \verb|kokkos_malloc| to get a contiguous pool of memory. When we destroy the \verb|StaticKokkosPool|, we call \verb|kokkos_free| to release the memory back to the system. The memory pool is divided into an array of contiguous fixed-size 1 kiB chunks. Each chunk is ordered and indexed by their position. 
+In Omega\_h, a \verb|StaticKokkosPool| is a non-resizable pool of memory from which an allocation can be made. Upon instantiation of each \verb|StaticKokkosPool|, we call \verb|kokkos_malloc| to get a contiguous block of memory. When we destroy the \verb|StaticKokkosPool|, we call \verb|kokkos_free| to release the memory back to the system. The memory pool is divided into an array of contiguous fixed-size 1 kiB chunks. Each chunk is ordered and indexed by their position. 
 
 \subsection{Allocation}
-Instead of using a free-list, which may result in linear allocation time, we use a free-mulitset, \verb|freeSetBySize|, which results in logarithmic allocation time. When an allocation $n$ bytes is requested, we search through \verb|freeSetBySize| to find the smallest free region that can accommodate the number of requested chunks. The number of requested chunks is calculated by $r=\ceil{n \div \mathit{chunkSizeInBytes}}$. In the case of a new or empty \verb|StaticKokkosPool|s, \verb|freeSetBySize| would contain only one free region representing the entire pool. A free region is defined as a set of contiguous free blocks between allocated regions or ends of the pool. If the found free region has more chunks than the number of requested chunks, then we split the region and only allocate the chunks requested. The remaining region remains in the free list. It is worth noting that we only split regions of chunks and not the chunks themselves.
-
+Instead of using a free-list, which may result in linear allocation time, we use a free-mulitset, \verb|freeSetBySize|, which results in logarithmic allocation time. When an allocation $n$ bytes is requested, we search through \verb|freeSetBySize| to find the smallest free region that can accommodate the number of requested chunks. The number of requested chunks is calculated by $r=\ceil{n \div \mathit{chunkSizeInBytes}}$. In the case of a new or empty \verb|StaticKokkosPool|s, \verb|freeSetBySize| would contain only one free region representing the entire pool. Figure~\ref{fig:freeSetBySize} shows how \verb|freeSetBySize| relates to the memory in the pool. A free region is defined as a set of contiguous free blocks between allocated regions or ends of the pool. If the found free region has more chunks than the number of requested chunks, then we split the region and only allocate the chunks requested. The remaining region remains in the free list.
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}
@@ -81,10 +78,11 @@ Instead of using a free-list, which may result in linear allocation time, we use
 	\draw[->] (root) |- (node2);
 \end{tikzpicture}
 \caption{A fragmented pool with \texttt{freeSetBySize} showing how free regions are organized in a tree structure. Index pairs are sorted top to bottom by the size of the free region they represent in decreasing order.}
+\label{fig:freeSetBySize}
 \end{figure}
 
 \subsection{Deallocation and Defragmentation}
-In addition to \verb|freeSetBySize|,  \verb|freeSetByIndex| is used to achieve defragmentation in logarithmic time.
+In addition to \verb|freeSetBySize|,  \verb|freeSetByIndex| is used to achieve defragmentation in logarithmic time. As the name suggests, index pairs stored \verb|freeSetByIndex| in sorted in numerical order of the first index itself as depicted in Figure~\ref{fig:freeSetByIndex}. It is not possible for two index pairs to ``overlap'' or share the same start or end index.
 
 \begin{figure}[H]
 \centering
@@ -119,9 +117,10 @@ In addition to \verb|freeSetBySize|,  \verb|freeSetByIndex| is used to achieve d
 
 \end{tikzpicture}
 \caption{A fragmented pool with \texttt{freeSetByIndex} showing how free regions are organized in a tree structure. Index pairs are sorted left to right by the indices of the free region they represent in increasing order.}
+\label{fig:freeSetByIndex}
 \end{figure}
 
-When memory is returned to the pool, the region is temporarily inserted into the tree.
+When memory is returned to the pool, the region is temporarily inserted into the tree as shown in Figure~\ref{fig:recentlyFreed}.
 
 \begin{figure}[H]
 \centering
@@ -161,9 +160,10 @@ When memory is returned to the pool, the region is temporarily inserted into the
 
 \end{tikzpicture}
 \caption{A fragmented pool with \texttt{freeSetByIndex} showing with a recently returned region.}
+\label{fig:recentlyFreed}
 \end{figure}
 
-We then check for free regions adjacent to the recently returned region, remove the two or three index pairs if any adjacent regions were found, and then insert one index pair encompassing the defragmented region.
+We then check for free regions adjacent to the recently returned region, remove the two or three index pairs if any adjacent regions were found, and then insert one index pair encompassing the defragmented region. For example, in Figure~\ref{fig:recentlyFreed} the allocation spanning blocks [2,5) is freed. This new free region is surrounded by pre-existing free regions [0,2) and [5,6). Thus we remove the three index pairs and replace them with [0,6). The result is visualized in Figure~\ref{fig:defragmented}.
 
 \begin{figure}[H]
 \centering
@@ -196,13 +196,14 @@ We then check for free regions adjacent to the recently returned region, remove 
 
 \end{tikzpicture}
 \caption{A less fragmented pool with \texttt{freeSetByIndex} shown after defragmentation}
+\label{fig:defragmented}
 \end{figure}
 
 \subsection{Resizing}
-In the event that we cannot find a suitable free region large enough to satisfy the allocation requested, we make a new \verb|StaticKokkosPool|. The \verb|KokkosPool| class performs this for us by maintaining a list of \verb|StaticKokkosPool|s. In Omega\_h, \verb|KokkosPool| is a singleton object that is lazy initialized upon the first allocation request. Upon instantiation, it creates one \verb|StaticKokkosPool| and adds the pool to its list. Thus, when you allocate through \verb|KokkosPool|, it iterates over its list of \verb|StaticKokkosPool|s and tries to allocate from all \textcolor{red}{What does 'allocate from all' mean?} until it achieves a successful allocation. If we have reached the end of the list, we allocate a new \verb|StaticKokkosPool| with the size of $\max \left( \mathit{r}, \mathit{mostChunks} * g \right)$, where $r$ is the number of chunks requested as defined above, $\mathit{mostChunks}$ is the number of chunks in the largest \verb|StaticKokkosPool|, and $g$ is the growth factor. In Omega\_h, the default growth factor is two. This strategy ensures an allocation will be successful until the machine runs out of physical memory.
+In the event that we cannot find a suitable free region large enough to satisfy the allocation requested, we make a new \verb|StaticKokkosPool|. The \verb|KokkosPool| class performs this for us by maintaining a list of \verb|StaticKokkosPool|s. In Omega\_h, \verb|KokkosPool| is a singleton object that is lazy initialized upon the first allocation request. Upon instantiation, it creates one \verb|StaticKokkosPool| and adds the pool to its list. Thus, when you allocate through \verb|KokkosPool|, it begins at the first \verb|StaticKokkosPool| in the list and tries to allocate from it. If the allocation fails, it moves on to the next \verb|StaticKokkosPool| and tries to allocated from that. We repeat this for every \verb|StaticKokkosPool| in the list until we achieve a successful allocation. If we have reached the end of the list and were not able to find a large enough free region in any of the \verb|StaticKokkosPool|s, we allocate a new \verb|StaticKokkosPool| with the size of $\max \left( \mathit{r}, \mathit{mostChunks} * g \right)$, where $r$ is the number of chunks requested as defined above, $\mathit{mostChunks}$ is the number of chunks in the largest \verb|StaticKokkosPool|, and $g$ is the growth factor. In Omega\_h, the default growth factor is two. This strategy ensures an allocation will be successful until the machine runs out of physical memory. Ideally, the total size of the initial \verb|StaticKokkosPool| and size of the chunks should be fine tuned to avoid this process.
 
-\section{Performance Results}
-The implementation discussed here resides in Omega\_h, a mesh adaptivity library. The library was benchmarked with and without the memory pool against the FUN3D delta wing case from the Unstructured Grid Adaptive Working Group adaptation benchmarks \textcolor{red}{REFERENCE ohttps://github.com/UGAWG/adapt-benchmarks} on the Oak Ridge Leadership Computing Facility's Frontier. In the 50k case without pooling, adaptation took 1.09 seconds on average. With the pool engagaed, this time was reduced to 0.48 seconds, a 56\% time reduction. In the 500k case without pooling, adaptation took 17.62 seconds on average while, with the pool enabled, adaptation only took 11.43 seconds on average, a 35\% time reduction.
+\section{Testing and Performance}
+The implementation discussed here resides in Omega\_h, a mesh adaptivity library. The library was benchmarked with and without the memory pool against the FUN3D delta wing case from the Unstructured Grid Adaptive Working Group adaptation benchmarks \cite{deltawing} on the Oak Ridge Leadership Computing Facility's Frontier. First, we built Kokkos, libMeshb, and Omega\_h as described in the wiki \cite{buildomegah}. By default, the memory pool is disabled and must be explicitly enabled with the \verb|--osh-pool| command line flag. In addition, we built and used the Kokkos Tools MemoryEvents tool as per their wiki \cite{kokkostoolsmemoryevents}. We ran the 500k case without pooling enabled to get a sense of the allocation patterns for this particular set of benchmarks. We found that it uses at most 670 MiB during the lifetime of the benchmark. Thus we chose an initial pool size of 700 MiB to ensure that the pool would not need to resize during the benchmarks. In addition, we found that allocation requests were greater than 1 kiB more often than not, thus we decided to set the fixed-chunk size to 1 kiB. After we determined these parameters for the pool, we ran all subsequent benchmarks without the Kokkos Tools enabled. In the 50k case without pooling, adaptation took 1.09 seconds on average. With the pool engaged, this time was reduced to 0.48 seconds, a 56\% time reduction. In the 500k case without pooling, adaptation took 17.62 seconds on average while, with the pool enabled, adaptation only took 11.43 seconds on average, a 35\% time reduction.
 
 \textcolor{red}{We need to provide details of the parameters used to control the memory pool and describe why they were selected. In addition, we shold discuss the mesh as well (initial and final entity count etc.) - I can help fill in some of these details.  It is also increasingly important to enable reproducability by providing the specific commits of the codes used, the input data set (could be a hash + github link or data on zenodo), and the logs from the runs.  This data and any associated readme/discussion would be provided as a supplement to the paper that the reader could download.}
 
@@ -228,11 +229,14 @@ The implementation discussed here resides in Omega\_h, a mesh adaptivity library
 \legend{Pool Enabled, Pool Disabled}
 \end{axis}
 \end{tikzpicture}
-\caption{A bar plot showing the performance improvements in the delta wing case brought by the implementation of a memory pool. Lower time is better.}
+\caption{A bar plot showing the performance improvements in the delta wing case brought by the implementation of a memory pool. Less time is better.}
 \end{figure}
 
 \section{Closing Remarks and Future Work}
-
+This implementation only splits and coalesces free regions, not individual chunks. Thus, it is possible for small allocations, or allocations that don't roughly align with multiples of the chunk size to result in excessive memory waste as the vast majority of an end chunk may not be used, especially if chunks are large. Alternative implementations such as Umpire on the other hand split and coalesce individual chunks, resulting in lesser memory usage. Regardless, this implementation manages to bring substantial performance improvements in a cross-platform manner. Thus far, this implementation has been tested on AMD and NVIDIA devices. Future work aims to test this implementation on Intel devices as well.
 \textcolor{red}{1-2 paragraph summary of what was discussed.  1-2 paragraphs describing what the next steps are (i.e., umpire detail about chunks from related work section), testing on Intel GPUs, etc..}
+
+\bibliographystyle{IEEEtran_rpi.bst}
+\bibliography{refs}
 
 \end{document}
