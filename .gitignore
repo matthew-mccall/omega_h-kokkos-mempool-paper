@@ -1,5 +1,5 @@
-# Created by https://www.toptal.com/developers/gitignore/api/latex,macos
-# Edit at https://www.toptal.com/developers/gitignore?templates=latex,macos
+# Created by https://www.toptal.com/developers/gitignore/api/latex,macos,microsoftoffice
+# Edit at https://www.toptal.com/developers/gitignore?templates=latex,macos,microsoftoffice
 
 ### LaTeX ###
 ## Core latex/pdflatex auxiliary files:
@@ -343,7 +343,28 @@ Temporary Items
 # iCloud generated files
 *.icloud
 
-# End of https://www.toptal.com/developers/gitignore/api/latex,macos
+### MicrosoftOffice ###
+*.tmp
+
+# Word temporary
+~$*.doc*
+
+# Word Auto Backup File
+Backup of *.doc*
+
+# Excel temporary
+~$*.xls*
+
+# Excel Backup File
+*.xlk
+
+# PowerPoint temporary
+~$*.ppt*
+
+# Visio autosave temporary files
+*.~vsd*
+
+# End of https://www.toptal.com/developers/gitignore/api/latex,macos,microsoftoffice
 
 # Out directory
 out/
