@@ -345,4 +345,8 @@ Temporary Items
 
 # End of https://www.toptal.com/developers/gitignore/api/latex,macos
 
+# Out directory
 out/
+
+# Supplemental log files from Frontier Benchmarks
+!50*.log
