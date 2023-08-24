@@ -13,4 +13,4 @@ The log files from the testing described in the paper are included in this repos
 |[Kokkos](https://github.com/kokkos/kokkos/tree/62d2b6c879b74b6ae7bd06eb3e5e80139c4708e6) |`62d2b6c879b74b6ae7bd06eb3e5e80139c4708e6`|
 |[Kokkos Tools](https://github.com/kokkos/kokkos-tools/tree/4bae71ccaef1f6073cb745fbc98e440186c3a8a6)|`4bae71ccaef1f6073cb745fbc98e440186c3a8a6`|
 |[libMeshb](https://github.com/LoicMarechal/libMeshb/tree/b4a91513317119ff71a1186906a052da0e535913)| `b4a91513317119ff71a1186906a052da0e535913`|
-|[Parallel Adapt Results](https://github.com/UGAWG/parallel-adapt-results)|`0188d38b4b9f312a4c27dbb3c59be2ff5a721396`|
+|[Parallel Adapt Results](https://github.com/UGAWG/parallel-adapt-results/tree/0188d38b4b9f312a4c27dbb3c59be2ff5a721396)|`0188d38b4b9f312a4c27dbb3c59be2ff5a721396`|
