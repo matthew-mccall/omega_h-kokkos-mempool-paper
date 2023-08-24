@@ -14,3 +14,5 @@ The log files from the testing described in the paper are included in this repos
 |[Kokkos Tools](https://github.com/kokkos/kokkos-tools/tree/4bae71ccaef1f6073cb745fbc98e440186c3a8a6)|`4bae71ccaef1f6073cb745fbc98e440186c3a8a6`|
 |[libMeshb](https://github.com/LoicMarechal/libMeshb/tree/b4a91513317119ff71a1186906a052da0e535913)| `b4a91513317119ff71a1186906a052da0e535913`|
 |[Parallel Adapt Results](https://github.com/UGAWG/parallel-adapt-results/tree/0188d38b4b9f312a4c27dbb3c59be2ff5a721396)|`0188d38b4b9f312a4c27dbb3c59be2ff5a721396`|
+
+Tested on OCLF Frontier with AMD ROCm 5.3.0
