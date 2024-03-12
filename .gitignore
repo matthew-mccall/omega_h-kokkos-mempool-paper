@@ -371,3 +371,6 @@ out/
 
 # Supplemental log files from Frontier Benchmarks
 !50*.log
+
+# Local neovim configuration
+.nvimrc
