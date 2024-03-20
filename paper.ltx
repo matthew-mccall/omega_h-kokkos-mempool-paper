@@ -311,7 +311,7 @@
 
         \begin{block}{Testing}
             \begin{itemize}
-                \item The library was benchmarked with and without the memory pool against the FUN3D delta wing case from the Unstructured Grid Adaptive Working Group adaptation benchmarks \cite{deltawing} on the Oak Ridge Leadership Computing Facility's Frontier. First, we built Kokkos, libMeshb, and Omega\_h as described in the Omega\_h wiki \cite{buildomegah}. 
+              \item The library was benchmarked with and without the memory pool against the FUN3D delta wing case from the Unstructured Grid Adaptive Working Group adaptation benchmarks \cite{deltawing} on \textbf{Oak Ridge Leadership Computing Facility's Frontier with AMD Mi250x GPUs}. First, we built Kokkos, libMeshb, and Omega\_h as described in the Omega\_h wiki \cite{buildomegah}. 
                 \item We ran the 500k case, which comprised of 581,196 tetrahedrons before adaptation and 5,283,878 tetrahedrons after adaptation, with the pool disabled and with the MemoryEvents tool enabled to get a sense of the allocation patterns for this particular set of benchmarks. 
                 \item We found that it uses at most 670 MiB during the lifetime of the benchmark. Thus we chose an initial pool size of 700 MiB. 
                 \item In addition, we found that allocation requests were greater than 1 kiB more often than not, thus we decided to set the fixed-chunk size to 1 kiB.
@@ -359,7 +359,7 @@
                 \item Small allocations, or allocations that don't roughly align with multiples of the chunk size to result in excessive memory waste as the vast majority of an end chunk may not be used, especially if chunks are large.
                 \item Alternative implementations such as Umpire on the other hand split and coalesce individual chunks, resulting in lesser memory usage. Regardless, this implementation manages to bring substantial performance improvements in a cross-platform manner. 
                 \item This implementation has been tested on AMD and NVIDIA devices. Future work aims to test this implementation on Intel devices as well. Furthermore, this implementation has only been tested on systems with traditional, separate discrete host and device memory. 
-                \item We intend to test this implementation on newer systems such those that utilize NVIDIA's Grace-Hopper APU and AMD and Intel equivalents. Here, we determined that fixed-size chunk memory pools are just as suitable for use in device memory spaces as host memory spaces.
+                \item We intend to test this implementation on newer systems such those that utilize NVIDIA's Grace-Hopper APU and AMD equivalents. Here, we determined that fixed-size chunk memory pools are just as suitable for use in device memory spaces as host memory spaces.
                 \item Testing has also confirmed that pooling device memory significantly reduces the running time of an application by upwards of up to 45\%. 
                 \item In conclusion, fixed-size chunk memory pools are a viable method of managing device memory that brings substantial performance improvements in a cross-platform manner. 
 
