@@ -44,35 +44,28 @@
 
         \begin{block}{Background and Related Works}
             \begin{itemize}
-                \item 
-                    \begin{itemize}
-                        \item Omega\_h \cite{omegah} is a software library written in C++ that provides mesh adaptivity for tetrahedron and triangle meshes, with an emphasis on high-performance computing. It is designed to add adaptive capabilities to existing simulation software. 
-                        \item Mesh adaptivity allows for the reduction of both discretization error and the number of degrees of freedom during a simulation, as well as enabling simulations with moving objects and changing geometries. 
-                        \item Omega\_h achieves this in a manner that is fast, memory-efficient, and portable across a variety of architectures.
-                    \end{itemize}
-
-                \item 
-                    \begin{itemize}
-                        \item The design for this pool was inspired by Boost's Simple Segregated Storage \cite{boostsss}, a fixed-size chunk memory-pool implementation targeting host-sided memory. 
-                        \item An important distinction between Boost's Simple Segregated Storage and other similar host-bound implementations and ours is that the free-list is interweaved into the chunks themselves.
-                        \item While this reduces memory overhead, storing a free-list in device memory would require copying the free-list to the host, manipulating it, and then copying it back to the device each time an allocation or deallocation is performed. 
-                    \end{itemize}
+                \item Omega\_h \cite{omegah} is a software library written in C++ that provides mesh adaptivity for tetrahedron and triangle meshes, with an emphasis on high-performance computing. It is designed to add adaptive capabilities to existing simulation software. 
+                \item Mesh adaptivity allows for the reduction of both discretization error and the number of degrees of freedom during a simulation, as well as enabling simulations with moving objects and changing geometries. 
+                \item The design for this pool was inspired by Boost's Simple Segregated Storage \cite{boostsss}, a fixed-size chunk memory-pool implementation targeting host-sided memory. 
+                \item An important distinction between Boost's Simple Segregated Storage and other similar host-bound implementations and ours is that the free-list is interweaved into the chunks themselves.
+                \item While this reduces memory overhead, storing a free-list in device memory would require copying the free-list to the host, manipulating it, and then copying it back to the device each time an allocation or deallocation is performed. 
             \end{itemize}
 
-            \includegraphics[width=0.3\textwidth]{sss1}
-            \includegraphics[width=0.35\textwidth]{sss2}
+            \begin{figure}[H]
+                \centering
+                \includegraphics[width=0.3\textwidth]{sss1}
+                \includegraphics[width=0.35\textwidth]{sss2}
+                \caption{Diagram of Boost's Simple Segregated Storage whereby the free-list is interweaved into the chunks}
+            \end{figure}
 
             This scheme for managing chunks was impractical. It was much more reasonable to store the free-list in host memory. However, now that we have separated the free-list from the underlying chunks pool, we realized it does not have to be a list, which can result in linear allocation time. Thus, we opted to use free-sets instead. 
         \end{block}
 
-        \begin{block}{Technical Details}
-            In Omega\_h, a \lstinline|StaticKokkosPool| is a non-resizable pool of memory from which an allocation can be made. Upon instantiation of each \lstinline|StaticKokkosPool|, we call \lstinline|kokkos_malloc| to get a contiguous block of memory. When we destroy the \lstinline|StaticKokkosPool|, we call \lstinline|kokkos_free| to release the memory back to the system. The memory pool is divided into an array of contiguous fixed-size 1 kiB chunks. Each chunk is ordered and indexed by their position. 
-        \end{block}{Technical Details}
-
         \begin{block}{Allocation}
             \begin{itemize}
+                \item In Omega\_h, a \lstinline|StaticKokkosPool| is a non-resizable pool of memory from which an allocation can be made. The memory pool is divided into an array of contiguous fixed-size chunks. Each chunk is ordered and indexed by their position. 
                 \item Instead of using a free-list, which may result in linear allocation time, we use a free-mulitset, \lstinline|freeSetBySize|, which results in logarithmic allocation time. 
-                \item When an allocation $n$ bytes is requested, we search through \lstinline|freeSetBySize| to find the smallest free region that can accommodate the number of requested chunks. The number of requested chunks is calculated by $r=\ceil{n \div \mathit{chunkSizeInBytes}}$. 
+                \item When an allocation $n$ bytes is requested, we search through \lstinline|freeSetBySize| to find the smallest free region that can accommodate the number of requested chunks. 
                 \item In the case of a new or empty \lstinline|StaticKokkosPool|s, \lstinline|freeSetBySize| would contain only one free region representing the entire pool. Figure~\ref{fig:freeSetBySize} shows how \lstinline|freeSetBySize| relates to the memory in the pool. 
                 \item A free region is defined as a set of contiguous free blocks between allocated regions or ends of the pool. If the found free region has more chunks than the number of requested chunks, then we split the region and only allocate the chunks requested. The remaining region remains in the free list.
             \end{itemize}
@@ -240,23 +233,85 @@
         \column{0.5\textwidth} 
 
         \begin{block}{Resizing}
+            The \lstinline|KokkosPool| class maintains a list of \lstinline|StaticKokkosPool|s. 
+
+            \begin{figure}[H]
+                \centering
+                \begin{tikzpicture}
+                    \draw (-1,-2) rectangle (14,2); % Class box
+                    \node at (2,1) {KokkosPool}; % Class name
+
+                    \foreach \i in {0,...,1} {
+                        \draw (\i,0) rectangle (\i+1,-1);
+                        \node at (\i+0.5,-0.5) {\i};
+                    }
+                    \foreach \i in {2,...,4} {
+                        \draw[fill=gray] (\i,0) rectangle (\i+1,-1);
+                        \node at (\i+0.5,-0.5) {\i};
+                    }
+                    \foreach \i in {5,...,6} {
+                        \draw (\i,0) rectangle (\i+1,-1);
+                        \node at (\i+0.5,-0.5) {\i};
+                    }
+                    \foreach \i in {6,...,9} {
+                        \draw[fill=gray] (\i,0) rectangle (\i+1,-1);
+                        \node at (\i+0.5,-0.5) {\i};
+                    }
+                    \foreach \i in {10,...,12} {
+                        \draw (\i,0) rectangle (\i+1,-1);
+                        \node at (\i+0.5,-0.5) {\i};
+                    }
+                \end{tikzpicture}
+                \caption{An instance of \lstinline|KokkosPool| containing one \lstinline|StaticKokkosPool|}
+                \label{fig:kokkosPool}
+            \end{figure}
+            In the event that we cannot find a suitable free region large enough to satisfy the allocation requested, we make a new \lstinline|StaticKokkosPool|. 
+
+            \begin{figure}[H]
+                \centering
+                \begin{tikzpicture}
+                    \draw (-1,-3) rectangle (27,3); % Class box
+                    \node at (2,2) {KokkosPool}; % Class name
+
+                    \foreach \i in {0,...,1} {
+                        \draw (\i,0) rectangle (\i+1,1);
+                        \node at (\i+0.5,0.5) {\i};
+                    }
+                    \foreach \i in {2,...,4} {
+                        \draw[fill=gray] (\i,0) rectangle (\i+1,1);
+                        \node at (\i+0.5,0.5) {\i};
+                    }
+                    \foreach \i in {5,...,6} {
+                        \draw (\i,0) rectangle (\i+1,1);
+                        \node at (\i+0.5,0.5) {\i};
+                    }
+                    \foreach \i in {6,...,9} {
+                        \draw[fill=gray] (\i,0) rectangle (\i+1,1);
+                        \node at (\i+0.5,0.5) {\i};
+                    }
+                    \foreach \i in {10,...,12} {
+                        \draw (\i,0) rectangle (\i+1,1);
+                        \node at (\i+0.5,0.5) {\i};
+                    }
+                    \foreach \i in {0,...,25} {
+                        \draw (\i,-1) rectangle (\i+1,-2);
+                        \node at (\i+0.5,-1.5) {\i};
+                    }
+                \end{tikzpicture}
+                \caption{An instance of \lstinline|KokkosPool| containing one \lstinline|StaticKokkosPool|}
+                \label{fig:kokkosPoolExpanded}
+            \end{figure}
             \begin{itemize}
-                \item The \lstinline|KokkosPool| class maintains a list of \lstinline|StaticKokkosPool|s. 
-                \item In the event that we cannot find a suitable free region large enough to satisfy the allocation requested, we make a new \lstinline|StaticKokkosPool|. 
                 \item In Omega\_h, \lstinline|KokkosPool| is a singleton object that is lazy initialized upon the first allocation request. Upon instantiation, it creates one \lstinline|StaticKokkosPool| and adds the pool to its list. 
                 \item When you allocate through \lstinline|KokkosPool|, it begins at the first \lstinline|StaticKokkosPool| in the list and tries to allocate from it. 
                 \item If the allocation fails, it moves on to the next \lstinline|StaticKokkosPool| and tries to allocated from that. We repeat this for every \lstinline|StaticKokkosPool| in the list until we achieve a successful allocation. 
                 \item If we have reached the end of the list and were not able to find a large enough free region in any of the \lstinline|StaticKokkosPool|s, we allocate a new \lstinline|StaticKokkosPool| with an appropriate size.
-                \item In Omega\_h, the default growth factor is two. This strategy ensures an allocation will be successful until the machine runs out of physical memory. 
-                \item Ideally, the total size of the initial \lstinline|StaticKokkosPool| and size of the chunks should be fine tuned to avoid this process.
             \end{itemize}
         \end{block}
 
-        \begin{block}{Testing and Performance}
+        \begin{block}{Testing}
             \begin{itemize}
-                \item The implementation discussed here resides in Omega\_h, a mesh adaptivity library. 
                 \item The library was benchmarked with and without the memory pool against the FUN3D delta wing case from the Unstructured Grid Adaptive Working Group adaptation benchmarks \cite{deltawing} on the Oak Ridge Leadership Computing Facility's Frontier. First, we built Kokkos, libMeshb, and Omega\_h as described in the Omega\_h wiki \cite{buildomegah}. 
-                \item By default, the memory pool is disabled and must be explicitly enabled with the \lstinline|--osh-pool| command line flag. 
                 \item We ran the 500k case, which comprised of 581,196 tetrahedrons before adaptation and 5,283,878 tetrahedrons after adaptation, with the pool disabled and with the MemoryEvents tool enabled to get a sense of the allocation patterns for this particular set of benchmarks. 
                 \item We found that it uses at most 670 MiB during the lifetime of the benchmark. Thus we chose an initial pool size of 700 MiB. 
                 \item In addition, we found that allocation requests were greater than 1 kiB more often than not, thus we decided to set the fixed-chunk size to 1 kiB.
@@ -277,8 +332,8 @@
                     \begin{axis}[
                         ybar,
                         bar width=1.5cm,
-                        width=\textwidth,
-                        height=10cm,
+                        width=0.5\textwidth,
+                        height=15cm,
                         legend style={at={(0.01,0.98)}, anchor=north west},
                         ylabel={Time (seconds)},
                         symbolic x coords={50k,500k},
@@ -307,7 +362,7 @@
                 \item We intend to test this implementation on newer systems such those that utilize NVIDIA's Grace-Hopper APU and AMD and Intel equivalents. Here, we determined that fixed-size chunk memory pools are just as suitable for use in device memory spaces as host memory spaces.
                 \item Testing has also confirmed that pooling device memory significantly reduces the running time of an application by upwards of up to 45\%. 
                 \item In conclusion, fixed-size chunk memory pools are a viable method of managing device memory that brings substantial performance improvements in a cross-platform manner. 
-                
+
             \end{itemize}
         \end{block}
 
