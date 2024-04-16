@@ -374,27 +374,7 @@
 
             \begin{figure}[H]
                 \centering
-                \begin{tikzpicture}
-                    \begin{axis}[
-                        ybar,
-                        bar width=1.5cm,
-                        width=0.75\textwidth,
-                        height=12cm,
-                        legend style={at={(0.01,0.98)}, anchor=north west},
-                        ylabel={Time (seconds)},
-                        symbolic x coords={50k,500k},
-                        xtick=data,
-                        enlarge x limits=0.5,
-                        nodes near coords,
-                        nodes near coords align={vertical},
-                        ymin=0
-                        ]
-                        \addplot coordinates {(50k,0.491791) (500k,11.569935)};
-                        \addplot coordinates {(50k,0.49014) (500k,11.570082)};
-                        \addplot coordinates {(50k,0.891196) (500k,18.27778)};
-                        \legend{Pool Enabled (Default), Pool Enabled (Reduced Memory), Pool Disabled}
-                    \end{axis}
-                \end{tikzpicture}
+                \includegraphics{results1.png}
                 \caption{A bar plot showing the performance improvements in the delta wing case brought by the implementation of a memory pool. Less time is better.}
             \end{figure}
         \end{block}
